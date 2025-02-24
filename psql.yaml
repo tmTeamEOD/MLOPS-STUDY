@@ -1,0 +1,71 @@
+# 1. StorageClass: 동적 프로비저닝을 위한 스토리지 클래스 정의
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-dynamic
+provisioner: rancher.io/local-path  # 클러스터에 설치된 동적 프로비저너에 맞게 수정
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+---
+# 2. PersistentVolumeClaim: StorageClass를 참조하여 동적 프로비저닝 사용
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  storageClassName: local-dynamic
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Ti
+---
+# 3. Deployment: PostgreSQL 컨테이너 실행 (PVC 마운트)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16  # 원하는 PostgreSQL 버전 선택
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "psql"
+            - name: POSTGRES_USER
+              value: "psql"
+            - name: POSTGRES_PASSWORD
+              value: "hateyou417"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+# 4. Service: 클러스터 내부에서 PostgreSQL 접근을 위한 서비스 생성
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  type: NodePort
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
